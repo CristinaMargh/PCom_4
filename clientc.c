@@ -247,7 +247,6 @@ void enter_library() {
     free(compute);
 
     char *resp = receive_from_server(sockfd);
-    //printf("%s", resp);
     if (resp == NULL) {
         printf("No response from server.\n");
     } else {
@@ -313,7 +312,7 @@ void add_book() {
     printf("page_count=");
     fgets(page_count, LINELEN, stdin);
     delete_newline(page_count);
-    if(!is_number(page_count)){
+    if (!is_number(page_count)){
         printf("ERROR - page_count is not number\n");
         return;
     }
@@ -328,17 +327,14 @@ void add_book() {
     json_object_set_string(root_object, "page_count", page_count);
     char *serialized_string = json_serialize_to_string(root_value);
     // message
-    char *request = compute_post_request(HOST, BOOKS_ACCESS, "application/json", &serialized_string, 1, &in_system, 0, token);
+    char *cookie = malloc(BUFLEN * sizeof(char));
+    if(in_system)
+        strcpy(cookie, in_system);
+    char *request = compute_post_request(HOST, BOOKS_ACCESS, "application/json", &serialized_string, 1, &cookie, 1, token);
     send_to_server(sockfd, request);
     free(request);
 
-    if (!in_system) {
-        printf("ERROR -No user!\n");
-        return;
-    }
-
     char *receive = receive_from_server(sockfd);
-    //printf("%s", receive);
     if (receive == NULL) {
         printf("No response from server.\n");
     } else {
