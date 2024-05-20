@@ -16,6 +16,31 @@
 // Used to save the user after login command. 
 char *in_system = NULL;
 char *token = NULL;
+// Function used to check if the page_number input from the add_book command is an actual number, not a string
+int is_number(const char *str) {
+    if (str == NULL) {
+        return 0; 
+    }
+    char *endptr;
+    errno = 0; 
+    // Conversion
+    strtol(str, &endptr, 10);
+    if (errno != 0 || endptr == str || *endptr != '\0' || str[0] == '\0') {
+        return 0; 
+    }
+    return 1; 
+}
+// Used to verify if the username or password has a space which is not permitted.
+int there_is_space(const char *str) {
+    if (str == NULL) {
+        return 0; 
+    }
+    if (strchr(str, ' ') != NULL) {
+        return 1;
+    }
+    // No space found
+    return 0;
+}
 // Delete newline from the end of a string
 void delete_newline(char *string) {
     int len = strlen(string);
@@ -40,6 +65,17 @@ void register_comm() {
     printf("password=");
     fgets(password, LINELEN, stdin);
     delete_newline(password);
+    // Checks 
+    if (there_is_space(username) == 1) {
+        printf("ERROR - there is a space in the username!\n");
+        close(sockfd);
+        return;
+    }
+    if (there_is_space(password) == 1) {
+        printf("ERROR - there is a space in the password!\n");
+        close(sockfd);
+        return;
+    }
     // Create JSON object
     JSON_Value *value = json_value_init_object();
     JSON_Object *object = json_value_get_object(value);
@@ -54,7 +90,7 @@ void register_comm() {
     // Server's response check.
     char *response = receive_from_server(sockfd);
     if (response == NULL) {
-        printf("No response from server.\n");
+        printf("ERROR -  No response from server.\n");
     } else {
         // Error
         if (strstr(response, "Bad Request") != NULL) {
@@ -90,12 +126,23 @@ void login() {
     fgets(password, LINELEN, stdin);
     delete_newline(password);
 
+    if (there_is_space(username) == 1) {
+        printf("ERROR - there is a space in the username!\n");
+        close(sockfd);
+        return;
+    }
+    if (there_is_space(password) == 1) {
+        printf("ERROR - there is a space in the password!\n");
+        close(sockfd);
+        return;
+    }
+
     // Create JSON object
-    JSON_Value *root_value = json_value_init_object();
-    JSON_Object *root_object = json_value_get_object(root_value);
+    JSON_Value *value = json_value_init_object();
+    JSON_Object *root_object = json_value_get_object(value);
     json_object_set_string(root_object, "username", username);
     json_object_set_string(root_object, "password", password);
-    char *serialized_string = json_serialize_to_string(root_value);
+    char *serialized_string = json_serialize_to_string(value);
     // message
     char *request = compute_post_request(HOST, "/api/v1/tema/auth/login", "application/json", &serialized_string, 1, NULL, 0, NULL);
     send_to_server(sockfd, request);
@@ -129,7 +176,7 @@ void login() {
     }
     // Free the used resources.
     json_free_serialized_string(serialized_string);
-    json_value_free(root_value);
+    json_value_free(value);
 
     // Close the socket connection
     close(sockfd);
@@ -141,7 +188,7 @@ void get_books() {
         printf("Failed to connect to the server.\n");
         exit(-1);
     }
-    if (!in_system) {
+    if (!in_system) {   
         printf("ERROR - No user loged!\n");
         return;
     }
@@ -167,6 +214,7 @@ void get_books() {
                 printf("ERROR - No books in library!\n");
                 return;
             }
+            // We go through the books and display the required information
             for (int i = 0; i < number_of_books; i++) {
                 JSON_Object *book = json_array_get_object(books, i);
                 printf("id:%d ", (int)json_object_get_number(book, "id"));
@@ -206,7 +254,7 @@ void enter_library() {
         if (strstr(resp, "error")) {
             printf("ERROR -No access to library!\n");
         } else {
-            printf("Entered library.\n");       
+            printf("SUCCESS - Entered library.\n");       
             const char* tokenKey = "\"token\":\"";
             char* start = strstr(resp, tokenKey);
             if (start == NULL) {
@@ -231,25 +279,11 @@ void enter_library() {
             if (token != NULL) {
                 free(token);
             }
-            token = result;
-            //printf("Token extracted: %s\n", token);   
+            token = result; 
             }
     }
     free(resp);
     close(sockfd);
-}
-// Function used to check if the page_number input from the add_book command is an actual number, not a string
-int is_number(const char *str) {
-    if (str == NULL) {
-        return 0; 
-    }
-    char *endptr;
-    errno = 0; 
-    strtol(str, &endptr, 10); // Conversia stringului în număr
-    if (errno != 0 || endptr == str || *endptr != '\0' || str[0] == '\0') {
-        return 0; 
-    }
-    return 1; 
 }
 // Function for the add_book command.
 void add_book() {
@@ -259,10 +293,6 @@ void add_book() {
     if (sockfd < 0) {
         printf("Failed to connect to the server.\n");
         exit(-1);
-    }
-    if (!in_system) {
-        printf("ERROR -No user!\n");
-        return;
     }
     printf("title=");
     fgets(title, LINELEN, stdin);
@@ -302,6 +332,11 @@ void add_book() {
     send_to_server(sockfd, request);
     free(request);
 
+    if (!in_system) {
+        printf("ERROR -No user!\n");
+        return;
+    }
+
     char *receive = receive_from_server(sockfd);
     //printf("%s", receive);
     if (receive == NULL) {
@@ -333,10 +368,6 @@ void get_book() {
             printf("Failed to connect to the server.\n");
             exit(-1);
         }
-        if (!in_system) {
-            printf("ERROR - no one is loged!\n");
-            exit(-1);
-            }
         // Adding the id to form the exact url (char *url from the function definition)    
         char new[LINELEN];
         strcpy(new, BOOKS_ACCESS);
@@ -346,6 +377,11 @@ void get_book() {
         char *compute = compute_get_request(HOST, new, NULL, &in_system, 1, token);
         send_to_server(sockfd, compute);
         free(compute);
+
+         if (!in_system) {
+            printf("ERROR - no one is loged!\n");
+            exit(-1);
+            }
 
         char *resp = receive_from_server(sockfd);
         // Checks for the response.
@@ -394,10 +430,6 @@ void delete_book() {
             printf("Failed to connect to the server.\n");
             exit(-1);
         }
-        if(in_system == NULL) {
-            printf("ERROR - no one is loged!\n");
-            exit(-1);
-            }
         char new[LINELEN];
         strcpy(new, BOOKS_ACCESS);
         strcat(new, "/");
@@ -408,6 +440,10 @@ void delete_book() {
         send_to_server(sockfd, compute);
         free(compute);
 
+    if(in_system == NULL) {
+            printf("ERROR - no one is loged!\n");
+            exit(-1);
+            }
         char *resp = receive_from_server(sockfd);
         if (resp == NULL) {
             printf("No response from server.\n");
@@ -441,9 +477,9 @@ void logout() {
             printf("No response from server.\n");
         } else {
             if (strstr(resp, "error")) {
-                printf("We can t logout the user!\n");
+                printf("ERROR -  We can't logout the user!\n");
             } else {
-                printf("Logout done!\n");
+                printf("SUCCESS - Logout done!\n");
             }
         }
         free(in_system);
