@@ -17,17 +17,17 @@
 char *in_system = NULL;
 char *token = NULL;
 // Delete newline from the end of a string
-void trim_newline(char *string) {
+void delete_newline(char *string) {
     int len = strlen(string);
     if (len > 0 && string[len - 1] == '\n') {
         string[len - 1] = '\0';
     }
 }
-// Register commnad
-void register_comm(int sockfd) {
+// Register commnad function
+void register_comm() {
     char username[LINELEN], password[LINELEN];
     // Open a socket connection
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         printf("Failed to connect to the server.\n");
         exit(-1);
@@ -35,29 +35,28 @@ void register_comm(int sockfd) {
     // Username
     printf("username=");
     fgets(username, LINELEN, stdin);
-    trim_newline(username);
+    delete_newline(username);
     // Password
     printf("password=");
     fgets(password, LINELEN, stdin);
-    trim_newline(password);
+    delete_newline(password);
     // Create JSON object
-    JSON_Value *root_value = json_value_init_object();
-    JSON_Object *root_object = json_value_get_object(root_value);
-    json_object_set_string(root_object, "username", username);
-    json_object_set_string(root_object, "password", password);
-    char *serialized_string = json_serialize_to_string(root_value);
+    JSON_Value *value = json_value_init_object();
+    JSON_Object *object = json_value_get_object(value);
+    json_object_set_string(object, "username", username);
+    json_object_set_string(object, "password", password);
+    char *serialized_string = json_serialize_to_string(value);
     // message
-    char *request = compute_post_request(HOST, "/api/v1/tema/auth/register", "application/json", &serialized_string, 1, NULL, 0, NULL);
-    //printf("%s", request);
+    char *request = compute_post_request(HOST, "/api/v1/tema/auth/register", "application/json",
+         &serialized_string, 1, NULL, 0, NULL);
     send_to_server(sockfd, request);
     free(request);
-
+    // Server's response check.
     char *response = receive_from_server(sockfd);
-    //printf("%s", response);
     if (response == NULL) {
         printf("No response from server.\n");
     } else {
-        // Bad request
+        // Error
         if (strstr(response, "Bad Request") != NULL) {
             printf("ERROR -repeated username!\n");
         } else { 
@@ -65,18 +64,18 @@ void register_comm(int sockfd) {
         }
         free(response);
     }
-
+    // Free the resources.
     json_free_serialized_string(serialized_string);
-    json_value_free(root_value);
+    json_value_free(value);
 
-    // Close the socket connection
+    // Close the socket connection.
     close(sockfd);
 }
-// Login command
-void login(int sockfd) {
+// Login command function
+void login() {
     char username[LINELEN], password[LINELEN];
-    // Open a socket connection
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+    // Open a socket connection.
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         printf("Failed to connect to the server.\n");
         exit(-1);
@@ -84,12 +83,12 @@ void login(int sockfd) {
     // Username
     printf("username=");
     fgets(username, LINELEN, stdin);
-    trim_newline(username);
+    delete_newline(username);
 
     // Password
     printf("password=");
     fgets(password, LINELEN, stdin);
-    trim_newline(password);
+    delete_newline(password);
 
     // Create JSON object
     JSON_Value *root_value = json_value_init_object();
@@ -99,23 +98,21 @@ void login(int sockfd) {
     char *serialized_string = json_serialize_to_string(root_value);
     // message
     char *request = compute_post_request(HOST, "/api/v1/tema/auth/login", "application/json", &serialized_string, 1, NULL, 0, NULL);
-    //printf("%s", request);
     send_to_server(sockfd, request);
     free(request);
 
     char *receive = receive_from_server(sockfd);
-    //printf("%s", receive);
-    
+    // Checks for the server's response.
     if (receive == NULL) {
         printf("No response from server.\n");
     } else {
         if (strstr(receive, "Bad Request") != NULL) {
-            printf("ERROR\n");
+            printf("ERROR - can't log the user!\n");
         } else { 
             printf("SUCCESS - user loged in!\n");
             // We take the loged user
-            const char* startKeyword = "connect.sid";
-            char* start = strstr(receive, startKeyword);
+            const char* start_word = "connect.sid";
+            char* start = strstr(receive, start_word);
             char* end = strchr(start, ';');
             int length = end - start;
             char* result = malloc(length + 1);
@@ -130,16 +127,16 @@ void login(int sockfd) {
         }
         free(receive);
     }
-
+    // Free the used resources.
     json_free_serialized_string(serialized_string);
     json_value_free(root_value);
 
     // Close the socket connection
     close(sockfd);
 }
-
-void get_books(int sockfd) {
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+// get_books command function
+void get_books() {
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         printf("Failed to connect to the server.\n");
         exit(-1);
@@ -151,21 +148,23 @@ void get_books(int sockfd) {
     char *compute = compute_get_request(HOST,"/api/v1/tema/library/books",NULL, &in_system,  1, token);
     send_to_server(sockfd, compute);
     free(compute);
+
     char *response = receive_from_server(sockfd);
-    //printf("%s", response);
-     if (strstr(response, "\"error\"")) {
+    // Checks for the response.
+     if (strstr(response, "error")) {
         printf("ERROR - Can't get the books\n");
     } else {
-        // Assuming the books data starts with '['
+        // Books start with [
         char *jsonData = strstr(response, "[");
-        if(!jsonData)
+        if (!jsonData)
             return;
-        JSON_Value *root_value = json_parse_string(jsonData);
-        if (json_value_get_type(root_value) == JSONArray) {
-            JSON_Array *books = json_value_get_array(root_value);  
+
+        JSON_Value *value = json_parse_string(jsonData);
+        if (json_value_get_type(value) == JSONArray) {
+            JSON_Array *books = json_value_get_array(value);  
             int number_of_books = (int)json_array_get_count(books);  
             if (number_of_books == 0) {
-                printf("No books in library!\n");
+                printf("ERROR - No books in library!\n");
                 return;
             }
             for (int i = 0; i < number_of_books; i++) {
@@ -175,20 +174,21 @@ void get_books(int sockfd) {
                 printf("\n");
             }
         } else {
-            printf("Unexpected data format.\n");
+            printf("ERROR \n");
         }
-        json_value_free(root_value);   
+        json_value_free(value);   
     }
     free(response);
+    // Close the connection
     close(sockfd);
 }
-
-void enter_library(int sockfd) {
+// enter_library command
+void enter_library() {
     if(!in_system) {
         printf("No user!\n");
         return;
     }
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         printf("Failed to connect to the server.\n");
         exit(-1);
@@ -238,25 +238,24 @@ void enter_library(int sockfd) {
     free(resp);
     close(sockfd);
 }
+// Function used to check if the page_number input from the add_book command is an actual number, not a string
 int is_number(const char *str) {
     if (str == NULL) {
         return 0; 
     }
-
     char *endptr;
     errno = 0; 
-    long val = strtol(str, &endptr, 10); // Conversia stringului în număr
-
+    strtol(str, &endptr, 10); // Conversia stringului în număr
     if (errno != 0 || endptr == str || *endptr != '\0' || str[0] == '\0') {
         return 0; 
     }
     return 1; 
 }
-
-void add_book(int sockfd) {
+// Function for the add_book command.
+void add_book() {
     char title[LINELEN], author[LINELEN], genre[LINELEN], publisher[LINELEN], page_count[LINELEN];
     // Open a socket connection
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         printf("Failed to connect to the server.\n");
         exit(-1);
@@ -267,25 +266,25 @@ void add_book(int sockfd) {
     }
     printf("title=");
     fgets(title, LINELEN, stdin);
-    trim_newline(title);
+    delete_newline(title);
 
     printf("author=");
     fgets(author, LINELEN, stdin);
-    trim_newline(author);
+    delete_newline(author);
 
     printf("genre=");
     fgets(genre, LINELEN, stdin);
-    trim_newline(genre);
+    delete_newline(genre);
     
     printf("publisher=");
     fgets(publisher, LINELEN, stdin);
-    trim_newline(publisher);
+    delete_newline(publisher);
 
     printf("page_count=");
     fgets(page_count, LINELEN, stdin);
-    trim_newline(page_count);
+    delete_newline(page_count);
     if(!is_number(page_count)){
-        printf("not number\n");
+        printf("ERROR - page_count is not number\n");
         return;
     }
     
@@ -322,32 +321,34 @@ void add_book(int sockfd) {
     // Close the socket connection
     close(sockfd);
 }
-
-void get_book(int sockfd) {
+// Function for the get_book command.
+void get_book() {
     char id[LINELEN];
     printf("id=");
     fgets(id, LINELEN, stdin);
-    trim_newline(id);
+    delete_newline(id);
 
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) {
             printf("Failed to connect to the server.\n");
             exit(-1);
         }
-        if(in_system == NULL) {
+        if (!in_system) {
             printf("ERROR - no one is loged!\n");
             exit(-1);
             }
+        // Adding the id to form the exact url (char *url from the function definition)    
         char new[LINELEN];
         strcpy(new, BOOKS_ACCESS);
         strcat(new, "/");
         strcat(new, id); 
+
         char *compute = compute_get_request(HOST, new, NULL, &in_system, 1, token);
         send_to_server(sockfd, compute);
         free(compute);
 
         char *resp = receive_from_server(sockfd);
-       // printf("%s", resp);
+        // Checks for the response.
         if (resp == NULL) {
             printf("No response from server.\n");
         } else {
@@ -355,43 +356,40 @@ void get_book(int sockfd) {
                 printf("ERROR -Can t get that book\n");
             } else {
                 printf("SUCCESS - book with the given id identified!\n");
-                // Separate headers and JSON content
-    char *headerEnd = strstr(resp, "\r\n\r\n");
-    if (headerEnd) {
-        headerEnd += 4; // Move past the "\r\n\r\n"
-        // Now headerEnd points to the beginning of the JSON body
-        JSON_Value *root_value = json_parse_string(headerEnd);
-        if (root_value != NULL) {
-            JSON_Object *book = json_value_get_object(root_value);
-            if (book != NULL) {
-                printf("id: %d\n", (int)json_object_get_number(book, "id"));
-                printf("title: %s\n", json_object_get_string(book, "title"));
-                printf("author: %s\n", json_object_get_string(book, "author"));
-                printf("publisher: %s\n", json_object_get_string(book, "publisher"));
-                printf("genre: %s\n", json_object_get_string(book, "genre"));
-                printf("page_count: %d\n", (int)json_object_get_number(book, "page_count"));
-            } else {
-                printf("No valid book data found.\n");
+    
+                char *headerEnd = strstr(resp, "\r\n\r\n");
+                 headerEnd += 4; // Move past the "\r\n\r\n"
+                // Now headerEnd points to the beginning of the JSON body
+                JSON_Value *value = json_parse_string(headerEnd);
+                if (value != NULL) {
+                    JSON_Object *book = json_value_get_object(value);
+                    if (book != NULL) {
+                        printf("id: %d\n", (int)json_object_get_number(book, "id"));
+                        printf("title: %s\n", json_object_get_string(book, "title"));
+                        printf("author: %s\n", json_object_get_string(book, "author"));
+                        printf("publisher: %s\n", json_object_get_string(book, "publisher"));
+                        printf("genre: %s\n", json_object_get_string(book, "genre"));
+                        printf("page_count: %d\n", (int)json_object_get_number(book, "page_count"));
+                    } else {
+                        printf("ERROR - No valid book data found.\n");
+                    }
+                    json_value_free(value);
+                    } else {
+                        printf("Failed to parse JSON data.\n");
+                    } 
+                }
             }
-            json_value_free(root_value);
-        } else {
-            printf("Failed to parse JSON data.\n");
-        }
-    } else {
-        printf("No JSON data found in response.\n");
-    }
-            }
-        }
         free(resp);
+        // Close the connection.
         close(sockfd);
 }
-
-void delete_book(int sockfd) {
+// Function for the delete_book command.
+void delete_book() {
     char id[LINELEN];
     printf("id=");
     fgets(id, LINELEN, stdin);
-    trim_newline(id);
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+    delete_newline(id);
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) {
             printf("Failed to connect to the server.\n");
             exit(-1);
@@ -405,8 +403,6 @@ void delete_book(int sockfd) {
         strcat(new, "/");
         strcat(new, id); 
         // need to delete the request
-        
-        // char *compute = compute_get_request(HOST,new, NULL, &in_system, 1, NULL);
         char *compute = compute_delete_request(HOST,new, NULL, &in_system, 1, token);
 
         send_to_server(sockfd, compute);
@@ -425,16 +421,16 @@ void delete_book(int sockfd) {
         free(resp);
         close(sockfd);
 }
-
-void logout(int sockfd) {
-    sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
+// Function for the logout command.
+void logout() {
+    int sockfd = open_connection(HOST, PORT, AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) {
             printf("Failed to connect to the server.\n");
             exit(-1);
         }
         if (in_system == NULL) {
             printf("ERROR - no one is loged!\n");
-            exit(-1);
+            return;
             }
         char *compute = compute_get_request(HOST,"/api/v1/tema/auth/logout", NULL, &in_system, 1, NULL);
         send_to_server(sockfd, compute);
@@ -451,14 +447,16 @@ void logout(int sockfd) {
             }
         }
         free(in_system);
+        in_system = NULL;
+        free(token);
+        token = NULL;
         free(resp);
         close(sockfd);
 }
 
 int main() {
     char command[20];
-    int sockfd;
-
+   
     while (1) {
         if (!fgets(command, sizeof(command), stdin)) {
             printf("Error reading command input!\n");
@@ -471,21 +469,21 @@ int main() {
         }
 
         if (strcmp(command, "register") == 0) {
-            register_comm(sockfd);
+            register_comm();
         } else if (strcmp(command, "enter_library") == 0) {
-            enter_library(sockfd);
+            enter_library();
         } else if (strcmp(command, "login") == 0) {
-            login(sockfd);
+            login();
         } else if (strcmp(command, "get_books") == 0) {
-            get_books(sockfd);
+            get_books();
         } else if (strcmp(command, "get_book") == 0) {
-            get_book(sockfd);
+            get_book();
         } else if (strcmp(command, "add_book") == 0) {
-            add_book(sockfd);
+            add_book();
         } else if (strcmp(command, "delete_book") == 0) {
-            delete_book(sockfd);
+            delete_book();
         } else if (strcmp(command, "logout") == 0) {
-            logout(sockfd);
+            logout();
         }
         else if (strcmp(command, "exit") == 0) {
             break;
